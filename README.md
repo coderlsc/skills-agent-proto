@@ -1,122 +1,178 @@
 # LangChain Skills Agent
 
-使用 LangChain 构建的能发现和使用 Skills 的 Coding Agent，演示 Anthropic Skills 三层加载机制的底层原理。
+使用 LangChain 1.0 构建的 Skills Agent，演示 Anthropic Skills 三层加载机制的底层原理。
 
-> **B站视频演示**: 配合视频《Skills 原理深度解析 + Agent 实战》使用，一键三连换代码！
+> **B站视频**: 配合视频《Skills 原理深度解析 + Agent 实战》使用
 
-## 核心概念
+## 特性
 
-### 什么是 Skills？
-
-Skills 是 Claude Code 的模块化能力扩展机制。每个 Skill 打包了指令、元数据和可选资源（脚本、模板），Agent 会在相关时自动使用它们。
-
-### Skills 三层加载机制
-
-| 层级 | 加载时机 | Token 消耗 | 内容 |
-|------|----------|------------|------|
-| **Level 1** | 启动时 | ~100/Skill | YAML frontmatter (name, description) |
-| **Level 2** | 触发时 | <5000 | SKILL.md 主体指令 |
-| **Level 3** | 按需 | 仅输出 | 脚本执行结果（代码不进上下文） |
-
-### 核心设计理念
-
-```
-让大模型成为真正的"智能体"：
-- 自己阅读 SKILL.md 指令
-- 自己发现可用的脚本
-- 自己决定执行什么命令
-- 代码层面不需要特殊处理脚本发现/执行逻辑
-```
+- **Extended Thinking**: 显示模型的思考过程（蓝色面板）
+- **流式输出**: Token 级实时显示响应
+- **工具调用可视化**: 显示工具名称、参数、执行结果
+- **三层 Skills 加载**: Level 1 元数据注入 → Level 2 指令加载 → Level 3 脚本执行
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 安装
 
 ```bash
-# 使用 uv
+git clone https://github.com/NanmiCoder/skills-agent-proto.git
+cd skills-agent-proto
 uv sync
-
-# 或使用 pip
-pip install -e .
 ```
 
-### 2. 设置 API Key
+### 2. 配置 API Key
+
+创建 `.env` 文件：
 
 ```bash
-export ANTHROPIC_API_KEY=your-api-key
+# 方式一：直接使用 Anthropic API
+ANTHROPIC_API_KEY=sk-xxx
+
+# 方式二：使用第三方代理
+ANTHROPIC_API_KEY=your-key
+ANTHROPIC_BASE_URL=https://your-proxy.com/anthropic
 ```
 
-### 3. 运行示例
+### 3. 交互式验证
 
 ```bash
-# 或使用 CLI
-uv run langchain-skills --list-skills
-uv run langchain-skills --show-prompt
 uv run langchain-skills --interactive
 ```
 
-## 视频演示命令
+## 交互式演示
 
-以下命令用于 B 站视频演示，展示三层加载机制：
+### 基础命令测试
+
+```
+You: 列出当前目录的文件
+```
+
+观察输出：
+- 🔧 Tool Call: `bash` + 参数 `{"command": "ls -la"}`
+- 📤 Tool Result: `[OK]` + 文件列表
+- 💬 Response: AI 的总结
+
+### Skills 加载测试
+
+```
+You: 提取这篇公众号文章 https://mp.weixin.qq.com/s/xxx
+```
+
+观察三层加载：
+1. **Level 1**: Agent 在 system prompt 中看到 `news-extractor` skill 元数据
+2. **Level 2**: Agent 调用 `load_skill("news-extractor")` 获取详细指令
+3. **Level 3**: Agent 根据指令调用 `bash` 执行提取脚本
+
+### 错误处理测试
+
+```
+You: 执行 exit 1
+```
+
+观察输出：
+- 📤 Tool Result: `[FAILED] Exit code: 1` (红色标识)
+
+## CLI 命令
 
 ```bash
-# 1. 列出 Skills（展示 Level 1 元数据发现）
+# 交互式模式（推荐）
+uv run langchain-skills --interactive
+
+# 单次执行
+uv run langchain-skills "列出当前目录"
+
+# 禁用 Thinking（降低延迟）
+uv run langchain-skills --no-thinking "执行 pwd"
+
+# 查看发现的 Skills
 uv run langchain-skills --list-skills
 
-# 2. 显示 System Prompt（展示元数据注入）
+# 查看 System Prompt（Level 1 注入内容）
 uv run langchain-skills --show-prompt
-
-# 3. 实际运行（展示 Level 2 + 3 加载过程）
-uv run langchain-skills "提取这篇公众号文章: https://mp.weixin.qq.com/s/xxx"
 ```
-
-### 示例 Skill: news-extractor
-
-项目自带的演示 Skill，位于 `.claude/skills/news-extractor/`:
-
-```
-.claude/skills/news-extractor/
-├── SKILL.md              # 元数据 + 指令
-├── pyproject.toml        # 依赖配置
-└── scripts/
-    └── extract_news.py   # 提取脚本
-```
-
-支持的站点：
-- 微信公众号 (`mp.weixin.qq.com`)
-- 今日头条 (`toutiao.com`)
-- 网易新闻 (`163.com`)
-- 搜狐新闻 (`sohu.com`)
-- 腾讯新闻 (`qq.com`)
 
 ## 项目结构
 
 ```
 skills-agent-proto/
-├── .claude/
-│   └── skills/
-│       └── news-extractor/   # 示例 Skill
-│           ├── SKILL.md
-│           ├── pyproject.toml
-│           └── scripts/
-│               └── extract_news.py
-├── src/
-│   └── langchain_skills/
-│       ├── __init__.py       # 模块导出
-│       ├── agent.py          # LangChain Agent 实现（Level 1 注入）
-│       ├── cli.py            # CLI 入口（流式输出 + Thinking）
-│       ├── skill_loader.py   # Skills 发现和加载（三层加载核心）
-│       └── tools.py          # LangChain Tools（load_skill + bash）
-├── examples/                  # 示例代码
-│   ├── basic_usage.py
-│   ├── extract_article.py
-│   ├── interactive_chat.py
-│   └── langchain_demo.py
-├── pyproject.toml
-└── README.md
+├── src/langchain_skills/
+│   ├── agent.py          # LangChain Agent (Extended Thinking)
+│   ├── cli.py            # CLI 入口 (流式输出)
+│   ├── tools.py          # 工具定义 (bash, load_skill, read_file, write_file)
+│   ├── skill_loader.py   # Skills 发现和加载
+│   └── stream/           # 流式处理模块
+│       ├── emitter.py    # 事件发射器
+│       ├── tracker.py    # 工具调用追踪（支持增量 JSON）
+│       ├── formatter.py  # 结果格式化器
+│       └── utils.py      # 常量和工具函数
+├── tests/                # 单元测试 (70 tests)
+│   ├── test_stream.py
+│   ├── test_cli.py
+│   └── test_tools.py
+├── docs/                 # 文档
+│   ├── skill_introduce.md
+│   └── langchain_agent_skill.md
+└── .claude/skills/       # 示例 Skills
+    └── news-extractor/
+        ├── SKILL.md
+        └── scripts/extract_news.py
 ```
 
-## 使用方式
+## Skills 三层加载机制
+
+| 层级 | 时机 | Token 消耗 | 内容 |
+|------|------|------------|------|
+| **Level 1** | 启动时 | ~100/Skill | YAML frontmatter (name, description) |
+| **Level 2** | 触发时 | <5000 | SKILL.md 完整指令 |
+| **Level 3** | 执行时 | 仅输出 | 脚本执行结果（代码不进上下文） |
+
+## 流式输出架构
+
+```
+Agent.stream_events()
+    ↓
+┌─────────────────────────────────────────────────────┐
+│  stream/emitter.py    → 生成标准化事件              │
+│  stream/tracker.py    → 追踪工具调用（处理增量JSON）│
+│  stream/formatter.py  → 格式化输出（检测成功/失败） │
+└─────────────────────────────────────────────────────┘
+    ↓
+CLI (Rich Live Display)
+    ↓
+┌─────────────────────────────────────────────────────┐
+│  🧠 Thinking Panel (蓝色)                          │
+│  🔧 Tool Call (黄色) + Args                        │
+│  📤 Tool Result (绿色 ✓ / 红色 ✗)                  │
+│  💬 Response Panel (绿色)                          │
+└─────────────────────────────────────────────────────┘
+```
+
+## 工具输出格式
+
+bash 工具使用 `[OK]`/`[FAILED]` 前缀标识执行状态：
+
+```
+# 成功
+[OK]
+
+file1.txt
+file2.txt
+
+# 失败
+[FAILED] Exit code: 1
+
+--- stderr ---
+ls: /nonexistent: No such file or directory
+```
+
+## 运行测试
+
+```bash
+uv run python -m pytest tests/ -v
+```
+
+## 代码示例
 
 ### 作为库使用
 
@@ -124,87 +180,50 @@ skills-agent-proto/
 from langchain_skills import LangChainSkillsAgent
 
 # 创建 Agent
-agent = LangChainSkillsAgent()
+agent = LangChainSkillsAgent(enable_thinking=True)
 
-# 查看发现的 Skills
-for skill in agent.get_discovered_skills():
-    print(f"- {skill['name']}: {skill['description']}")
-
-# 查看 system prompt (Level 1)
-print(agent.get_system_prompt())
-
-# 运行 Agent
-result = agent.invoke("提取这篇公众号文章")
-response = agent.get_last_response(result)
-print(response)
+# 流式输出
+for event in agent.stream_events("列出当前目录"):
+    if event.get("type") == "tool_call":
+        print(f"Tool: {event['name']}, Args: {event['args']}")
+    elif event.get("type") == "tool_result":
+        print(f"Result: {event['content'][:100]}")
+    elif event.get("type") == "text":
+        print(event["content"], end="")
 ```
 
-### 作为 CLI 使用
-
-```bash
-# 列出发现的 Skills
-langchain-skills --list-skills
-
-# 显示 system prompt
-langchain-skills --show-prompt
-
-# 交互式模式
-langchain-skills --interactive
-```
-
-## Skills 位置
-
-Agent 会自动发现以下位置的 Skills：
-
-- `~/.claude/skills/` - 用户级 Skills（全局可用）
-- `.claude/skills/` - 项目级 Skills（项目特定）
-
-每个 Skill 目录需要包含 `SKILL.md` 文件，格式如下：
-
-```markdown
----
-name: my-skill
-description: 这个 Skill 做什么，什么时候使用它
----
-
-# My Skill
-
-## 使用说明
-
-...
-```
-
-## LangChain 1.0 API 要点
-
-### create_agent
+### LangChain 1.0 API
 
 ```python
 from langchain.agents import create_agent
-from langchain_anthropic import ChatAnthropic
+from langchain.chat_models import init_chat_model
+
+model = init_chat_model("claude-sonnet-4-5-20250929", thinking={
+    "type": "enabled",
+    "budget_tokens": 10000,
+})
 
 agent = create_agent(
-    model=ChatAnthropic(model="claude-sonnet-4-5-20250929"),
-    tools=[load_skill, bash, read_file],
+    model=model,
+    tools=[load_skill, bash, read_file, write_file],
     system_prompt=skills_prompt,
+    context_schema=SkillAgentContext,
 )
 ```
 
-### @tool with ToolRuntime
+## 环境变量
 
-```python
-from langchain.tools import tool, ToolRuntime
-
-@tool
-def my_tool(arg: str, runtime: ToolRuntime[MyContext]) -> str:
-    '''Tool description.'''
-    # runtime.context 访问上下文
-    return result
-```
+| 变量 | 说明 | 默认值 |
+|------|------|--------|
+| `ANTHROPIC_API_KEY` | API Key | 必填 |
+| `ANTHROPIC_BASE_URL` | 代理地址 | 官方 API |
+| `CLAUDE_MODEL` | 模型名称 | claude-sonnet-4-5-20250929 |
+| `MAX_TOKENS` | 最大 tokens | 16000 |
 
 ## 参考文档
 
-- [skill_introduce.md](./skill_introduce.md) - Skills 详细介绍
-- [langchain_agent_skill.md](./langchain_agent_skill.md) - LangChain 实现说明
+- [docs/skill_introduce.md](./docs/skill_introduce.md) - Skills 详细介绍
+- [docs/langchain_agent_skill.md](./docs/langchain_agent_skill.md) - LangChain 实现说明
 
 ## License
 
