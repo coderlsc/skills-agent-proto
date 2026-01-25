@@ -31,10 +31,10 @@ from dataclasses import dataclass
 import yaml
 
 
-# 默认 Skills 搜索路径
+# 默认 Skills 搜索路径（项目级优先，用户级兜底）
 DEFAULT_SKILL_PATHS = [
-    Path.home() / ".claude" / "skills",     # 用户级 Skills (~/.claude/skills/)
-    Path.cwd() / ".claude" / "skills",       # 项目级 Skills (.claude/skills/)
+    Path.cwd() / ".claude" / "skills",       # 项目级 Skills (.claude/skills/) - 优先
+    Path.home() / ".claude" / "skills",     # 用户级 Skills (~/.claude/skills/) - 兜底
 ]
 
 
@@ -96,8 +96,8 @@ class SkillLoader:
 
         Args:
             skill_paths: 自定义 Skills 搜索路径，默认为:
-                - ~/.claude/skills/ (用户级)
-                - .claude/skills/ (项目级)
+                - .claude/skills/ (项目级，优先)
+                - ~/.claude/skills/ (用户级，兜底)
         """
         self.skill_paths = skill_paths or DEFAULT_SKILL_PATHS
         self._metadata_cache: dict[str, SkillMetadata] = {}
