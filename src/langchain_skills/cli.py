@@ -605,7 +605,7 @@ def cmd_interactive(enable_thinking: bool = True):
 
     thinking_status = "[green]enabled[/green]" if enable_thinking else "[dim]disabled[/dim]"
     console.print(f"[dim]Extended Thinking: {thinking_status}[/dim]")
-    console.print("[dim]Commands: 'exit' to quit, 'skills' to list skills, 'prompt' to show system prompt[/dim]\n")
+    console.print("[dim]Commands: /exit to quit, /skills to list skills, /prompt to show system prompt[/dim]\n")
 
     thread_id = "interactive"
 
@@ -628,15 +628,15 @@ def cmd_interactive(enable_thinking: bool = True):
                 continue
 
             # 特殊命令
-            if user_input.lower() in ("exit", "quit", "q"):
+            if user_input.lower() in ("/exit", "/quit", "/q"):
                 console.print("[dim]Goodbye![/dim]")
                 break
 
-            if user_input.lower() == "skills":
+            if user_input.lower() == "/skills":
                 cmd_list_skills()
                 continue
 
-            if user_input.lower() == "prompt":
+            if user_input.lower() == "/prompt":
                 cmd_show_prompt()
                 continue
 

@@ -48,7 +48,7 @@ def print_banner():
         "- 🧠 实时显示模型思考过程（蓝色）\n"
         "- 🔧 显示工具调用（黄色）\n"
         "- 💬 逐字显示响应（绿色）\n\n"
-        "[dim]输入 'exit' 退出，'skills' 查看可用 Skills[/dim]",
+        "[dim]输入 /exit 退出，/skills 查看可用 Skills[/dim]",
         title="欢迎"
     ))
     console.print()
@@ -123,11 +123,11 @@ def chat():
             user_input = Prompt.ask("[bold green]你[/bold green]")
 
             # 处理特殊命令
-            if user_input.lower() in ("exit", "quit", "q"):
+            if user_input.lower() in ("/exit", "/quit", "/q"):
                 console.print("[yellow]再见！[/yellow]")
                 break
 
-            if user_input.lower() == "skills":
+            if user_input.lower() == "/skills":
                 console.print("\n[bold]可用 Skills:[/bold]")
                 for skill in skills:
                     console.print(f"  - [green]{skill['name']}[/green]: {skill['description'][:60]}...")
