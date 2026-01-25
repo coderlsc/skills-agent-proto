@@ -3,7 +3,7 @@ Skills 发现和加载器
 
 演示 Skills 三层加载机制的核心实现：
 - Level 1: scan_skills() - 扫描并加载所有 Skills 元数据到 system prompt
-- Level 2: load_skill() - 加载指定 Skill 的详细指令（只返回 instructions）
+- Level 2: load_skill(skill_name: str) - 根据skill name加载指定 Skill 的详细指令（只返回 instructions - skill.md文档)）
 - Level 3: 由 bash tool 执行脚本（见 tools.py），大模型从指令中自己发现脚本
 
 核心设计理念：
@@ -11,8 +11,11 @@ Skills 发现和加载器
     代码层面不需要特殊处理脚本发现/执行逻辑。
 
 Skills 目录结构：
-    skill-name/
-    └── SKILL.md          # 主要指令文件（YAML frontmatter + markdown）
+    my-skill/
+    ├── SKILL.md          # 必需：指令和元数据
+    ├── scripts/          # 可选：可执行脚本
+    ├── references/       # 可选：参考文档
+    └── assets/           # 可选：模板和资源
 
 SKILL.md 格式：
     ---
