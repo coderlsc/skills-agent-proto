@@ -141,10 +141,10 @@ uv run python -m pytest tests/ -v
 
 | 变量 | 说明 | 默认值 |
 |------|------|--------|
-| `ANTHROPIC_API_KEY` | API Key | 必填 |
+| `ANTHROPIC_AUTH_TOKEN` | API Key | 必填 |
 | `ANTHROPIC_BASE_URL` | 代理地址 | 官方 API |
-| `CLAUDE_MODEL` | 模型名称 | claude-sonnet-4-5-20250929 |
-| `MAX_TOKENS` | 最大 tokens | 16000 |
+| `CLAUDE_MODEL` | 模型名称 | claude-opus-4-5-20251101 |
+| `MAX_TURNS` | 最大交互次数 | 20 |
 
 ## 参考文档
 
