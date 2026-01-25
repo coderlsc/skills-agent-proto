@@ -109,10 +109,26 @@ class StreamState:
             self.is_thinking = False
             self.is_responding = False
             self.is_processing = False
-            self.tool_calls.append({
+
+            tool_id = event.get("id", "")
+            tc_data = {
+                "id": tool_id,
                 "name": event.get("name", "unknown"),
                 "args": event.get("args", {}),
-            })
+            }
+
+            # 用 tool_id 去重和更新（finalize 后会发送带完整参数的更新）
+            if tool_id:
+                updated = False
+                for i, tc in enumerate(self.tool_calls):
+                    if tc.get("id") == tool_id:
+                        self.tool_calls[i] = tc_data
+                        updated = True
+                        break
+                if not updated:
+                    self.tool_calls.append(tc_data)
+            else:
+                self.tool_calls.append(tc_data)
 
         elif event_type == "tool_result":
             self.is_processing = True  # 工具执行完成，等待 AI 继续处理
@@ -248,7 +264,7 @@ def format_tool_result(name: str, content: str, max_length: int = 800, compact: 
     """
     if compact:
         # Claude Code 风格：树形输出
-        return format_tool_result_compact(name, content, max_lines=5)
+        return format_tool_result_compact(name, content, max_lines=10)
     else:
         # 原有格式
         result = formatter.format(name, content, max_length)

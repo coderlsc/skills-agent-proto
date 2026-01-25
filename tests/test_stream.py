@@ -94,10 +94,10 @@ class TestToolCallTracker:
         assert info.args == {"command": "ls"}
 
     def test_is_ready_with_name_only(self):
-        """测试：只有 name 时应该 ready（修复的 bug）"""
+        """测试：只有 name 时应该 ready"""
         tracker = ToolCallTracker()
         tracker.update("id1", name="list_files")
-        # 无参数工具也应该 ready
+        # 有 name 且未发送，应该 ready
         assert tracker.is_ready("id1") is True
 
     def test_is_ready_with_args(self):
@@ -165,6 +165,8 @@ class TestToolCallTracker:
 
         info = tracker.get("id1")
         assert info.args == {"command": "ls"}
+        # finalize 后参数完整
+        assert info.args_complete is True
 
     def test_append_json_delta_complex(self):
         """测试复杂 JSON 片段累积"""
@@ -192,6 +194,50 @@ class TestToolCallTracker:
         info = tracker.get("id1")
         # 原有 args 应该保持
         assert info.args == {"original": "value"}
+
+    def test_get_all(self):
+        """测试获取所有工具调用（包括已发送的）"""
+        tracker = ToolCallTracker()
+        tracker.update("id1", name="bash", args={"command": "ls"})
+        tracker.update("id2", name="read", args={"path": "test.txt"})
+        tracker.mark_emitted("id1")
+
+        # get_pending 只返回未发送的
+        pending = tracker.get_pending()
+        assert len(pending) == 1
+        assert pending[0].id == "id2"
+
+        # get_all 返回所有的
+        all_calls = tracker.get_all()
+        assert len(all_calls) == 2
+
+    def test_finalize_updates_args(self):
+        """测试 finalize 后参数更新
+
+        模拟流程：
+        1. 收到 tool_use（args 为空）
+        2. 收到 input_json_delta（累积参数）
+        3. finalize 后参数完整
+        """
+        tracker = ToolCallTracker()
+
+        # 步骤1: 收到 tool_use，args 为空
+        tracker.update("id1", name="bash", args={})
+        tracker.mark_emitted("id1")  # 模拟已发送
+
+        # 步骤2: 收到 input_json_delta，累积参数
+        tracker.append_json_delta('{"command": "git status"}')
+
+        # 步骤3: finalize
+        tracker.finalize_all()
+        info = tracker.get("id1")
+        assert info.args == {"command": "git status"}
+        assert info.args_complete is True
+
+        # get_all 可以获取到更新后的参数
+        all_calls = tracker.get_all()
+        assert len(all_calls) == 1
+        assert all_calls[0].args == {"command": "git status"}
 
 
 class TestToolResultFormatter:

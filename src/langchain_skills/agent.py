@@ -409,8 +409,10 @@ When a user request matches a skill's description, use the load_skill tool to ge
                 name = block.get("name", "")
                 args = block.get("input") if block_type == "tool_use" else block.get("args")
                 args_payload = args if isinstance(args, dict) else {}
+
                 if tool_id:
                     tracker.update(tool_id, name=name, args=args_payload)
+                    # 立即发送（显示"执行中"状态），参数可能尚不完整
                     if tracker.is_ready(tool_id):
                         tracker.mark_emitted(tool_id)
                         yield emitter.tool_call(name, args_payload, tool_id)
@@ -440,11 +442,12 @@ When a user request matches a skill's description, use the load_skill tool to ge
         if tool_id:
             name = block.get("name", "")
             args = block.get("input", {})
-            tracker.update(tool_id, name=name, args=args)
-            # 只有未发送过的才发送
+            args_payload = args if isinstance(args, dict) else {}
+
+            tracker.update(tool_id, name=name, args=args_payload)
             if tracker.is_ready(tool_id):
                 tracker.mark_emitted(tool_id)
-                yield emitter.tool_call(name, args, tool_id)
+                yield emitter.tool_call(name, args_payload, tool_id)
 
     def _process_tool_calls(self, tool_calls: list, emitter: StreamEventEmitter, tracker: ToolCallTracker):
         """处理 chunk.tool_calls - 立即发送 tool_call 事件
@@ -456,22 +459,22 @@ When a user request matches a skill's description, use the load_skill tool to ge
             if tool_id:
                 name = tc.get("name", "")
                 args = tc.get("args", {})
-                tracker.update(tool_id, name=name, args=args)
-                # 只有未发送过的才发送
+                args_payload = args if isinstance(args, dict) else {}
+
+                tracker.update(tool_id, name=name, args=args_payload)
                 if tracker.is_ready(tool_id):
                     tracker.mark_emitted(tool_id)
-                    yield emitter.tool_call(name, args, tool_id)
+                    yield emitter.tool_call(name, args_payload, tool_id)
 
     def _process_tool_result(self, chunk, emitter: StreamEventEmitter, tracker: ToolCallTracker):
         """处理工具结果"""
         # 最终化：解析累积的 JSON 片段为 args
         tracker.finalize_all()
 
-        # 注意：tool_call 通常在 content block 或 tool_calls 中已发送
-        # 这里只处理可能遗漏的情况（如 input_json_delta 更新了 args 但未通过 tool_use 块）
-        for info in tracker.get_pending():
+        # 发送所有工具调用的更新（参数现在是完整的）
+        # CLI 会用 tool_id 去重和更新
+        for info in tracker.get_all():
             yield emitter.tool_call(info.name, info.args, info.id)
-            tracker.mark_emitted(info.id)
 
         # 发送结果
         name = getattr(chunk, "name", "unknown")

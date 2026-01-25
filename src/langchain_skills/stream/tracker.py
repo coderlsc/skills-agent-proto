@@ -16,6 +16,7 @@ class ToolCallInfo:
     name: str
     args: Dict = field(default_factory=dict)
     emitted: bool = False
+    args_complete: bool = False  # 参数是否完整（区分"无参数"和"参数待到达"）
     # 用于累积 input_json_delta 片段
     _json_buffer: str = ""
 
@@ -54,10 +55,23 @@ class ToolCallTracker:
         tool_id: str,
         name: Optional[str] = None,
         args: Optional[Dict] = None,
+        args_complete: bool = False,
     ) -> None:
-        """更新工具调用信息（累积式）"""
+        """更新工具调用信息（累积式）
+
+        Args:
+            tool_id: 工具调用 ID
+            name: 工具名称
+            args: 工具参数
+            args_complete: 参数是否完整。区分"参数为空字典"和"参数将通过 delta 到达"
+        """
         if tool_id not in self._calls:
-            self._calls[tool_id] = ToolCallInfo(id=tool_id, name=name or "", args=args or {})
+            self._calls[tool_id] = ToolCallInfo(
+                id=tool_id,
+                name=name or "",
+                args=args or {},
+                args_complete=args_complete,
+            )
             self._last_tool_id = tool_id
         else:
             info = self._calls[tool_id]
@@ -65,6 +79,9 @@ class ToolCallTracker:
                 info.name = name
             if args:
                 info.args = args
+            # 只有传入 True 时才更新为 True（避免后续调用意外重置）
+            if args_complete:
+                info.args_complete = True
 
     def append_json_delta(self, partial_json: str, index: int = 0) -> None:
         """累积 input_json_delta 片段
@@ -78,7 +95,7 @@ class ToolCallTracker:
             self._calls[tool_id]._json_buffer += partial_json
 
     def finalize_all(self) -> None:
-        """最终化所有工具调用：解析累积的 JSON 片段"""
+        """最终化所有工具调用：解析累积的 JSON 片段并标记参数完整"""
         for info in self._calls.values():
             if info._json_buffer:
                 try:
@@ -86,14 +103,19 @@ class ToolCallTracker:
                 except json.JSONDecodeError:
                     pass  # 保持原有 args
                 info._json_buffer = ""
+            # finalize 时标记所有工具参数完整
+            info.args_complete = True
 
     def is_ready(self, tool_id: str) -> bool:
-        """检查工具调用是否准备好发送（有 name 即可，args 可为空）"""
+        """检查工具调用是否准备好发送（有 name 且未发送即可）"""
         if tool_id not in self._calls:
             return False
         info = self._calls[tool_id]
-        # 只要有 name 且未发送即可，args 为空字典是合法的（某些工具无参数）
         return bool(info.name) and not info.emitted
+
+    def get_all(self) -> list[ToolCallInfo]:
+        """获取所有工具调用（包括已发送的）"""
+        return list(self._calls.values())
 
     def mark_emitted(self, tool_id: str) -> None:
         """标记已发送"""
