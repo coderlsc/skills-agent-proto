@@ -2,7 +2,7 @@
 
 使用 LangChain 1.0 构建的 Skills Agent，演示 Anthropic Skills 三层加载机制的底层原理。
 
-> **B站视频**: 配合视频《Skills 原理深度解析 + Agent 实战》使用
+> **B站视频**: [Skills到底怎么实现？我写了个Agent跑给你看](https://www.bilibili.com/video/BV1ZpzhBLE82)
 
 ## 特性
 
