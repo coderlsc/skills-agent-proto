@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { SkillSummary } from "../state/chatReducer";
 
 type SkillPanelProps = {
@@ -7,7 +9,7 @@ type SkillPanelProps = {
   error?: string;
 };
 
-export function SkillPanel({
+export const SkillPanel = memo(function SkillPanel({
   skills,
   activeSkillName,
   loading,
@@ -52,4 +54,4 @@ export function SkillPanel({
       </ul>
     </aside>
   );
-}
+});

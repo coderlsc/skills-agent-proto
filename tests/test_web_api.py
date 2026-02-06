@@ -7,7 +7,7 @@ from typing import Iterator
 
 from fastapi.testclient import TestClient
 
-from langchain_skills.web_api import create_app
+from langchain_skills.web_api import _parse_cors_origins, create_app
 
 
 class FakeAgent:
@@ -118,3 +118,37 @@ def test_chat_stream_frame_payload_is_valid_json():
 
     for line in lines:
         json.loads(line.replace("data: ", "", 1))
+
+
+# --- _parse_cors_origins tests ---
+
+
+def test_parse_cors_origins_returns_defaults_when_none():
+    result = _parse_cors_origins(None)
+    assert "http://localhost:5173" in result
+    assert "http://127.0.0.1:5173" in result
+
+
+def test_parse_cors_origins_returns_defaults_when_empty_string():
+    result = _parse_cors_origins("")
+    assert "http://localhost:5173" in result
+
+
+def test_parse_cors_origins_parses_custom_origins():
+    result = _parse_cors_origins("https://example.com,https://app.test")
+    assert result == ["https://example.com", "https://app.test"]
+
+
+def test_parse_cors_origins_strips_whitespace():
+    result = _parse_cors_origins("  https://a.com , https://b.com  ")
+    assert result == ["https://a.com", "https://b.com"]
+
+
+def test_parse_cors_origins_skips_empty_entries():
+    result = _parse_cors_origins(",,,https://a.com,,,")
+    assert result == ["https://a.com"]
+
+
+def test_parse_cors_origins_falls_back_on_all_whitespace():
+    result = _parse_cors_origins("  ,  ,  ")
+    assert "http://localhost:5173" in result

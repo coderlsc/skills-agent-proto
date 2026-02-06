@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
 import { ChatTimeline } from "./components/ChatTimeline";
 import { Composer } from "./components/Composer";
@@ -172,6 +172,18 @@ export default function App() {
     });
   };
 
+  const handleToggleToolExpand = useCallback(
+    (assistantId: string, toolId: string) => {
+      dispatch({
+        type: "toggle_tool_expand",
+        threadId: state.activeThreadId,
+        assistantEntryId: assistantId,
+        toolId,
+      });
+    },
+    [state.activeThreadId],
+  );
+
   const createThread = () => {
     if (state.isStreaming) {
       return;
@@ -229,14 +241,7 @@ export default function App() {
         <main className="chat-panel">
           <ChatTimeline
             entries={activeThread?.timeline || []}
-            onToggleToolExpand={(assistantId, toolId) =>
-              dispatch({
-                type: "toggle_tool_expand",
-                threadId: state.activeThreadId,
-                assistantEntryId: assistantId,
-                toolId,
-              })
-            }
+            onToggleToolExpand={handleToggleToolExpand}
           />
 
           {state.streamError && <p className="global-error">{state.streamError}</p>}

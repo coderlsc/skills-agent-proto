@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { memo, useState } from "react";
 
 type ComposerProps = {
   disabled: boolean;
   onSubmit: (text: string) => Promise<void> | void;
 };
 
-export function Composer({ disabled, onSubmit }: ComposerProps) {
+export const Composer = memo(function Composer({ disabled, onSubmit }: ComposerProps) {
   const [value, setValue] = useState("");
 
   const submit = async () => {
@@ -45,4 +45,4 @@ export function Composer({ disabled, onSubmit }: ComposerProps) {
       </div>
     </form>
   );
-}
+});

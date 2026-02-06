@@ -152,6 +152,188 @@ describe("chatReducer", () => {
     expect(done.isStreaming).toBe(false);
   });
 
+  it("stores skills on skills_loaded", () => {
+    const state = createInitialState();
+    const next = chatReducer(state, {
+      type: "skills_loaded",
+      skills: [
+        { name: "news-extractor", description: "Extract news", path: "/skills/news" },
+      ],
+    });
+
+    expect(next.skillsLoaded).toBe(true);
+    expect(next.skillsError).toBeUndefined();
+    expect(next.skills).toHaveLength(1);
+    expect(next.skills[0].name).toBe("news-extractor");
+  });
+
+  it("records error on skills_failed", () => {
+    const state = createInitialState();
+    const next = chatReducer(state, {
+      type: "skills_failed",
+      message: "network error",
+    });
+
+    expect(next.skillsLoaded).toBe(true);
+    expect(next.skillsError).toBe("network error");
+    expect(next.skills).toHaveLength(0);
+  });
+
+  it("caches prompt on prompt_loaded", () => {
+    const state = createInitialState();
+    const next = chatReducer(state, {
+      type: "prompt_loaded",
+      prompt: "You are a test agent.",
+    });
+
+    expect(next.promptCache).toBe("You are a test agent.");
+  });
+
+  it("creates a new thread and switches to it", () => {
+    const state = createInitialState();
+    const next = chatReducer(state, {
+      type: "create_thread",
+      threadId: "thread-2",
+      label: "Thread 2",
+    });
+
+    expect(next.activeThreadId).toBe("thread-2");
+    expect(next.threadOrder).toContain("thread-2");
+    expect(next.threads["thread-2"]).toMatchObject({
+      id: "thread-2",
+      label: "Thread 2",
+      timeline: [],
+    });
+  });
+
+  it("switches to existing thread on duplicate create_thread", () => {
+    const state = createInitialState();
+    const next = chatReducer(state, {
+      type: "create_thread",
+      threadId: "thread-1",
+      label: "Thread 1 dup",
+    });
+
+    expect(next.activeThreadId).toBe("thread-1");
+    expect(next.threadOrder).toHaveLength(1);
+  });
+
+  it("switches thread on switch_thread", () => {
+    let state = createInitialState();
+    state = chatReducer(state, {
+      type: "create_thread",
+      threadId: "thread-2",
+      label: "Thread 2",
+    });
+
+    const next = chatReducer(state, {
+      type: "switch_thread",
+      threadId: "thread-1",
+    });
+
+    expect(next.activeThreadId).toBe("thread-1");
+  });
+
+  it("ignores switch_thread for non-existing thread", () => {
+    const state = createInitialState();
+    const next = chatReducer(state, {
+      type: "switch_thread",
+      threadId: "non-existing",
+    });
+
+    expect(next.activeThreadId).toBe("thread-1");
+    expect(next).toBe(state);
+  });
+
+  it("appends system message to thread", () => {
+    const state = createInitialState();
+    const next = chatReducer(state, {
+      type: "append_system_message",
+      threadId: "thread-1",
+      entryId: "sys-1",
+      message: "## Skills List",
+      markdown: true,
+      createdAt: 100,
+    });
+
+    const timeline = next.threads["thread-1"].timeline;
+    expect(timeline).toHaveLength(1);
+    expect(timeline[0]).toMatchObject({
+      kind: "system",
+      id: "sys-1",
+      text: "## Skills List",
+      markdown: true,
+    });
+  });
+
+  it("toggles tool expanded state", () => {
+    let state = createInitialState();
+    state = chatReducer(state, {
+      type: "submit_user_message",
+      threadId: "thread-1",
+      message: "test",
+      userEntryId: "user-1",
+      assistantEntryId: "assistant-1",
+      createdAt: 1,
+    });
+    state = chatReducer(state, {
+      type: "stream_event",
+      threadId: "thread-1",
+      assistantEntryId: "assistant-1",
+      event: { type: "tool_call", id: "tool-1", name: "bash", args: { command: "ls" } },
+    });
+
+    const toggled = chatReducer(state, {
+      type: "toggle_tool_expand",
+      threadId: "thread-1",
+      assistantEntryId: "assistant-1",
+      toolId: "tool-1",
+    });
+
+    const assistant = toggled.threads["thread-1"].timeline[1];
+    expect(assistant.kind).toBe("assistant");
+    if (assistant.kind !== "assistant") return;
+    expect(assistant.tools[0].expanded).toBe(true);
+
+    const toggledBack = chatReducer(toggled, {
+      type: "toggle_tool_expand",
+      threadId: "thread-1",
+      assistantEntryId: "assistant-1",
+      toolId: "tool-1",
+    });
+
+    const assistant2 = toggledBack.threads["thread-1"].timeline[1];
+    if (assistant2.kind !== "assistant") return;
+    expect(assistant2.tools[0].expanded).toBe(false);
+  });
+
+  it("handles error stream event", () => {
+    const submitted = chatReducer(createInitialState(), {
+      type: "submit_user_message",
+      threadId: "thread-1",
+      message: "hello",
+      userEntryId: "user-1",
+      assistantEntryId: "assistant-1",
+      createdAt: 1,
+    });
+
+    const errored = chatReducer(submitted, {
+      type: "stream_event",
+      threadId: "thread-1",
+      assistantEntryId: "assistant-1",
+      event: { type: "error", message: "agent crashed" },
+    });
+
+    const assistant = errored.threads["thread-1"].timeline[1];
+    expect(assistant.kind).toBe("assistant");
+    if (assistant.kind !== "assistant") return;
+
+    expect(assistant.phase).toBe("error");
+    expect(assistant.error).toBe("agent crashed");
+    expect(errored.isStreaming).toBe(false);
+    expect(errored.streamError).toBe("agent crashed");
+  });
+
   it("records stream failure on connection errors", () => {
     const submitted = chatReducer(createInitialState(), {
       type: "submit_user_message",

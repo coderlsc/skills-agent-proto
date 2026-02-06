@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import type { ToolCallView } from "../state/chatReducer";
 
 const MAX_VISIBLE_LINES = 12;
@@ -65,7 +67,7 @@ function linesWithTreePrefix(content: string, expanded: boolean): {
   return { lines: prefixed, hiddenCount, totalLines: rawLines.length };
 }
 
-export function ToolCallItem({
+export const ToolCallItem = memo(function ToolCallItem({
   assistantId,
   tool,
   onToggleExpand,
@@ -122,4 +124,4 @@ export function ToolCallItem({
       )}
     </article>
   );
-}
+});
