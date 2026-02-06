@@ -7,6 +7,8 @@ requires-python = ">=3.12"
 dependencies = [
     "rich>=14.2.0",
     "prompt-toolkit>=3.0.0",
+    "fastapi>=0.116.1",
+    "uvicorn>=0.35.0",
     # LangChain 1.0 Skills Agent 依赖
     "langchain>=1.0.0",
     "langchain-anthropic>=1.0.0",
@@ -17,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 langchain-skills = "langchain_skills.cli:main"
+langchain-skills-web = "langchain_skills.web_api:main"
 
 [build-system]
 requires = ["hatchling"]

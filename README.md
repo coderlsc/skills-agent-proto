@@ -98,6 +98,55 @@ uv run langchain-skills --list-skills
 uv run langchain-skills --show-prompt
 ```
 
+## Web Demo（React + FastAPI + SSE）
+
+### 一键启动（推荐）
+
+```bash
+./start.sh
+```
+
+脚本会自动执行：
+- `uv sync`（后端依赖安装）
+- `web/npm install`（前端依赖安装）
+- 启动 FastAPI（8000）和 Vite（5173）
+
+### 1. 启动后端 API（端口 8000）
+
+```bash
+uv run langchain-skills-web
+```
+
+等价命令：
+
+```bash
+uv run uvicorn langchain_skills.web_api:app --reload --port 8000
+```
+
+### 2. 启动前端（端口 5173）
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+默认会连接 `http://localhost:8000`，如需修改：
+
+```bash
+VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+```
+
+### 3. Web 交互能力
+
+- 打开页面即显示已发现 Skills（name / description / path）
+- 底部输入框支持多轮对话和手动新建 thread
+- SSE 实时显示 `thinking`、`tool_call`、`tool_result`、`text`、`done`、`error`
+- 当调用 `load_skill` 时，UI 会明确标记当前识别到的 skill
+- 支持命令：
+  - `/skills` 显示可用技能列表
+  - `/prompt` 显示当前 system prompt
+
 ## 项目结构
 
 ```
