@@ -95,7 +95,7 @@ def test_chat_stream_endpoint_wraps_errors_as_error_event():
 
     text = _read_sse_text(client, "/api/chat/stream?message=explode&thread_id=t-1")
 
-    assert "event: error" in text
+    assert "event: agent_error" in text
     assert "boom" in text
 
 

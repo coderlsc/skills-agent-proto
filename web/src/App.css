@@ -119,6 +119,7 @@ body {
 .skills-panel {
   padding: 1rem;
   overflow: auto;
+  max-height: calc(100vh - 8.6rem);
 }
 
 .skills-panel h2 {
@@ -148,7 +149,7 @@ body {
 .skill-card {
   border: 1px solid var(--line);
   border-radius: 0.82rem;
-  padding: 0.8rem;
+  padding: 0.68rem;
   background: #fdfefe;
   transition: transform 180ms ease, border-color 180ms ease;
 }
@@ -186,6 +187,23 @@ body {
   font-size: 0.76rem;
   word-break: break-all;
   color: #37546b;
+}
+
+.skill-card__description {
+  margin: 0.38rem 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.skill-card__path {
+  margin-top: 0.22rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-all;
 }
 
 .skill-card__badge {

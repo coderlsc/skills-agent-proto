@@ -43,8 +43,11 @@ _AGENT_SINGLETON: LangChainSkillsAgent | None = None
 
 def _to_sse_frame(event_type: str, payload: dict[str, Any]) -> str:
     """Encode one SSE frame."""
+    # "error" conflicts with EventSource transport-level error events in browsers.
+    # Use a dedicated SSE event name while keeping payload.type = "error".
+    sse_event = "agent_error" if event_type == "error" else event_type
     data = json.dumps(payload, ensure_ascii=False)
-    return f"event: {event_type}\ndata: {data}\n\n"
+    return f"event: {sse_event}\ndata: {data}\n\n"
 
 
 def _parse_cors_origins(raw: str | None) -> list[str]:
@@ -105,6 +108,7 @@ def create_app(agent_provider: Callable[[], AgentLike] | None = None) -> FastAPI
         thread_id: str = Query("default", min_length=1),
     ) -> StreamingResponse:
         def event_stream() -> Iterator[str]:
+            error_emitted = False
             try:
                 agent = provider()
             except Exception as exc:  # pragma: no cover - defensive path
@@ -115,12 +119,15 @@ def create_app(agent_provider: Callable[[], AgentLike] | None = None) -> FastAPI
             try:
                 for event in agent.stream_events(message, thread_id=thread_id):
                     event_type = str(event.get("type", "message"))
+                    if event_type == "error":
+                        error_emitted = True
                     yield _to_sse_frame(event_type, event)
             except GeneratorExit:
                 return
             except Exception as exc:
-                payload = {"type": "error", "message": str(exc)}
-                yield _to_sse_frame("error", payload)
+                if not error_emitted:
+                    payload = {"type": "error", "message": str(exc)}
+                    yield _to_sse_frame("error", payload)
 
         return StreamingResponse(
             event_stream(),

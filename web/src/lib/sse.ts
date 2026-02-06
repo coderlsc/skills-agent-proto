@@ -6,7 +6,7 @@ const STREAM_EVENT_TYPES = [
   "tool_call",
   "tool_result",
   "done",
-  "error",
+  "agent_error",
 ] as const;
 
 type StreamOptions = {
@@ -33,6 +33,7 @@ export function openChatStream({
   endpoint.searchParams.set("thread_id", threadId);
 
   const source = new EventSource(endpoint.toString());
+  let terminalEventHandled = false;
 
   for (const eventName of STREAM_EVENT_TYPES) {
     source.addEventListener(eventName, (event) => {
@@ -41,6 +42,7 @@ export function openChatStream({
         onEvent(payload);
 
         if (payload.type === "done" || payload.type === "error") {
+          terminalEventHandled = true;
           source.close();
         }
       } catch (err) {
@@ -52,6 +54,9 @@ export function openChatStream({
   }
 
   source.onerror = () => {
+    if (terminalEventHandled) {
+      return;
+    }
     onError("SSE connection failed.");
     source.close();
   };

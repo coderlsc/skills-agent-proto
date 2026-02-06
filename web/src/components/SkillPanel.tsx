@@ -30,6 +30,7 @@ export function SkillPanel({
       <ul className="skills-list">
         {skills.map((skill) => {
           const active = skill.name === activeSkillName;
+          const description = skill.description || "No description provided.";
           return (
             <li
               key={skill.name}
@@ -39,8 +40,12 @@ export function SkillPanel({
                 <h3>{skill.name}</h3>
                 {active && <span className="skill-card__badge">In Use</span>}
               </div>
-              <p>{skill.description || "No description provided."}</p>
-              <code>{skill.path}</code>
+              <p className="skill-card__description" title={description}>
+                {description}
+              </p>
+              <code className="skill-card__path" title={skill.path}>
+                {skill.path}
+              </code>
             </li>
           );
         })}
