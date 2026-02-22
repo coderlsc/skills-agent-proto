@@ -17,11 +17,16 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
 from .agent import LangChainSkillsAgent, check_api_credentials
+from .storage import get_message_store
 
 
 DEFAULT_CORS_ORIGINS = (
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:5175",
+    "http://127.0.0.1:5175",
 )
 
 
@@ -139,6 +144,40 @@ def create_app(agent_provider: Callable[[], AgentLike] | None = None) -> FastAPI
             },
         )
 
+    # ===================================================================
+    # 会话管理 API
+    # ===================================================================
+
+    @app.get("/api/sessions")
+    def list_sessions(limit: int = Query(50, le=100)) -> dict[str, Any]:
+        """获取会话列表"""
+        store = get_message_store()
+        if store is None:
+            return {"sessions": [], "error": "Message storage not configured"}
+
+        sessions = store.get_sessions(limit)
+        return {"sessions": sessions}
+
+    @app.get("/api/sessions/{thread_id}/messages")
+    def get_session_messages(thread_id: str, limit: int = Query(100, le=500)) -> dict[str, Any]:
+        """获取会话消息历史"""
+        store = get_message_store()
+        if store is None:
+            return {"thread_id": thread_id, "messages": [], "error": "Message storage not configured"}
+
+        messages = store.get_messages(thread_id, limit)
+        return {"thread_id": thread_id, "messages": messages}
+
+    @app.post("/api/sessions/{thread_id}/title")
+    def update_session_title(thread_id: str, title: str = Query(..., min_length=1, max_length=500)) -> dict[str, Any]:
+        """更新会话标题"""
+        store = get_message_store()
+        if store is None:
+            return {"thread_id": thread_id, "error": "Message storage not configured"}
+
+        success = store.update_session_title(thread_id, title)
+        return {"thread_id": thread_id, "title": title, "updated": success}
+
     return app
 
 
@@ -150,7 +189,7 @@ def main() -> None:
     import uvicorn
 
     host = os.getenv("SKILLS_WEB_HOST", "0.0.0.0")
-    port = int(os.getenv("SKILLS_WEB_PORT", "8000"))
+    port = int(os.getenv("SKILLS_WEB_PORT", "8001"))
     reload_enabled = os.getenv("SKILLS_WEB_RELOAD", "").lower() in ("1", "true", "yes")
 
     uvicorn.run(

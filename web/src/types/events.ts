@@ -21,6 +21,7 @@ export type ToolResultEvent = {
   name: string;
   content: string;
   success?: boolean;
+  tool_use_id?: string;
 };
 
 export type DoneEvent = {
@@ -40,3 +41,23 @@ export type AgentStreamEvent =
   | ToolResultEvent
   | DoneEvent
   | ErrorEvent;
+
+// 存储的消息类型（从数据库加载）
+export type StoredMessage = {
+  id: number;
+  role: "human" | "ai" | "tool" | "system";
+  content: string;
+  reasoning_content?: string;
+  tool_calls?: string;  // JSON 字符串
+  tool_results?: string;  // JSON 字符串
+  tool_call_id?: string;
+  created_at: string;
+};
+
+export type StoredToolResult = {
+  [toolCallId: string]: {
+    name: string;
+    result: string;
+    success: boolean;
+  };
+};

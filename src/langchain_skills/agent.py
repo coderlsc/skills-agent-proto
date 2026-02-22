@@ -19,17 +19,19 @@ import os
 from pathlib import Path
 from typing import Optional, Iterator
 
-from dotenv import load_dotenv
+
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-from langchain_core.messages import AIMessage, AIMessageChunk
+from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage
 from langgraph.checkpoint.memory import InMemorySaver
 
 from .skill_loader import SkillLoader
 from .tools import ALL_TOOLS, SkillAgentContext
 from .stream import StreamEventEmitter, ToolCallTracker, is_success, DisplayLimits
-
-
+from .checkpoint import create_checkpointer
+from .storage import get_message_store
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from dotenv import load_dotenv
 # 加载环境变量（override=True 确保 .env 文件覆盖系统环境变量）
 load_dotenv(override=True)
 
@@ -129,6 +131,9 @@ class LangChainSkillsAgent:
             working_directory=self.working_directory,
         )
 
+        # 消息存储（延迟初始化）
+        self._message_store = None
+
         # 创建 LangChain Agent
         self.agent = self._create_agent()
 
@@ -204,10 +209,37 @@ When a user request matches a skill's description, use the load_skill tool to ge
             tools=ALL_TOOLS,
             system_prompt=self.system_prompt,
             context_schema=SkillAgentContext,
-            checkpointer=InMemorySaver(),
+            checkpointer=create_checkpointer(),
         )
 
         return agent
+
+    @property
+    def message_store(self):
+        """
+        获取消息存储实例（延迟初始化）
+
+        只有在配置了 MySQL checkpoint 时才启用消息存储。
+        """
+        if self._message_store is None:
+            self._message_store = get_message_store()
+        return self._message_store
+
+    def _generate_title(self, message: str) -> str:
+        """
+        从用户消息生成会话标题
+
+        Args:
+            message: 用户消息
+
+        Returns:
+            会话标题（最多 100 字符）
+        """
+        # 简单截取前 50 个字符作为标题
+        title = message.strip()[:50]
+        if len(message) > 50:
+            title += "..."
+        return title or "New Conversation"
 
     def get_system_prompt(self) -> str:
         """
@@ -296,7 +328,18 @@ When a user request matches a skill's description, use the load_skill tool to ge
         tracker = ToolCallTracker()
 
         full_response = ""
+        full_thinking = ""  # 累积完整的 thinking 内容
+        tool_results = {}  # {tool_call_id: {"name": str, "result": str, "success": bool}}
         debug = os.getenv("SKILLS_DEBUG", "").lower() in ("1", "true", "yes")
+
+        # 消息存储：确保会话记录存在并保存用户消息
+        if self.message_store:
+            self.message_store.ensure_session(thread_id, title=self._generate_title(message))
+            try:
+                self.message_store.save_message(thread_id, HumanMessage(content=message))
+            except Exception as e:
+                if debug:
+                    print(f"[DEBUG] Failed to save user message: {e}")
 
         # 使用 messages 模式获取 token 级流式
         try:
@@ -318,10 +361,23 @@ When a user request matches a skill's description, use the load_skill tool to ge
 
                 # 处理 AIMessageChunk / AIMessage
                 if isinstance(chunk, (AIMessageChunk, AIMessage)):
+                    # 将 chunk.tool_calls 同步到 tracker（用于消息保存）
+                    if hasattr(chunk, "tool_calls") and chunk.tool_calls:
+                        for tc in chunk.tool_calls:
+                            tc_id = tc.get("id", "")
+                            if tc_id:  # 只处理有 ID 的 tool call
+                                tracker.update(
+                                    tc_id,
+                                    name=tc.get("name", ""),
+                                    args=tc.get("args", {}),
+                                )
+
                     # 处理 content
                     for ev in self._process_chunk_content(chunk, emitter, tracker):
                         if ev.type == "text":
                             full_response += ev.data.get("content", "")
+                        elif ev.type == "thinking":
+                            full_thinking += ev.data.get("content", "")  # 累积 thinking
                         if debug:
                             print(f"[DEBUG] Yielding: {ev.type}")
                         yield ev.data
@@ -333,11 +389,27 @@ When a user request matches a skill's description, use the load_skill tool to ge
                                 print(f"[DEBUG] Yielding from tool_calls: {ev.type}")
                             yield ev.data
 
-                # 处理 ToolMessage (工具执行结果)
+                # 处理 ToolMessage (工具执行结果) - 收集结果用于存储
                 elif hasattr(chunk, "type") and chunk.type == "tool":
                     if debug:
                         tool_name = getattr(chunk, "name", "unknown")
                         print(f"[DEBUG] Processing tool result: {tool_name}")
+
+                    # 收集工具调用结果（用于后续存储）
+                    tool_call_id = getattr(chunk, "tool_call_id", "")
+                    if tool_call_id:
+                        name = getattr(chunk, "name", "unknown")
+                        raw_content = str(getattr(chunk, "content", ""))
+                        content = raw_content[:DisplayLimits.TOOL_RESULT_MAX]
+                        if len(raw_content) > DisplayLimits.TOOL_RESULT_MAX:
+                            content += "\n... (truncated)"
+                        success = is_success(content)
+                        tool_results[tool_call_id] = {
+                            "name": name,
+                            "result": content,
+                            "success": success
+                        }
+
                     for ev in self._process_tool_result(chunk, emitter, tracker):
                         if debug:
                             print(f"[DEBUG] Yielding: {ev.type}")
@@ -354,6 +426,38 @@ When a user request matches a skill's description, use the load_skill tool to ge
             # 发送错误事件让用户知道发生了什么
             yield emitter.error(str(e)).data
             raise
+
+        # 消息存储：保存 AI 响应（包含完整工具调用和结果）
+        if self.message_store:
+            try:
+                # 从 tracker 获取完整的工具调用信息
+                tool_calls_list = []
+                for info in tracker.get_all():
+                    tool_calls_list.append({
+                        "id": info.id,
+                        "name": info.name,
+                        "args": info.args,
+                    })
+
+                if full_response or tool_calls_list:
+                    ai_message = AIMessage(content=full_response, tool_calls=tool_calls_list)
+
+                    # 添加 thinking 和 tool_results 到 additional_kwargs
+                    if full_thinking:
+                        ai_message.additional_kwargs["reasoning_content"] = full_thinking
+                    if tool_results:
+                        ai_message.additional_kwargs["tool_results"] = tool_results
+
+                    self.message_store.save_message(thread_id, ai_message)
+                    if debug and tool_calls_list:
+                        print(f"[DEBUG] Saved AI message with {len(tool_calls_list)} tool calls")
+                        for tc in tool_calls_list:
+                            print(f"       - {tc['name']}: {tc['args']}")
+                        if tool_results:
+                            print(f"[DEBUG] Saved {len(tool_results)} tool results")
+            except Exception as e:
+                if debug:
+                    print(f"[DEBUG] Failed to save AI message: {e}")
 
         # 发送完成事件
         yield emitter.done(full_response).data
@@ -478,6 +582,7 @@ When a user request matches a skill's description, use the load_skill tool to ge
 
         # 发送结果
         name = getattr(chunk, "name", "unknown")
+        tool_call_id = getattr(chunk, "tool_call_id", "")
         raw_content = str(getattr(chunk, "content", ""))
         content = raw_content[:DisplayLimits.TOOL_RESULT_MAX]
         if len(raw_content) > DisplayLimits.TOOL_RESULT_MAX:
@@ -486,7 +591,7 @@ When a user request matches a skill's description, use the load_skill tool to ge
         # 基于内容判断是否成功（统一使用 is_success）
         success = is_success(content)
 
-        yield emitter.tool_result(name, content, success)
+        yield emitter.tool_result(name, content, success, tool_call_id)
 
     def get_last_response(self, result: dict) -> str:
         """

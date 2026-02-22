@@ -24,6 +24,15 @@ export type SkillSummary = {
   path: string;
 };
 
+export type SessionSummary = {
+  id: number;
+  thread_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+};
+
 export type ToolCallView = {
   id: string;
   name: string;
@@ -81,6 +90,11 @@ export type ChatState = {
   activeThreadId: string;
   isStreaming: boolean;
   streamError?: string;
+  // 会话管理
+  sessions: SessionSummary[];
+  sessionsLoaded: boolean;
+  sessionsError?: string;
+  leftPanelTab: "skills" | "sessions";
 };
 
 export type ChatAction =
@@ -95,6 +109,22 @@ export type ChatAction =
       message: string;
       userEntryId: string;
       assistantEntryId: string;
+      createdAt: number;
+    }
+  | {
+      type: "append_user_entry";
+      threadId: string;
+      entryId: string;
+      text: string;
+      createdAt: number;
+    }
+  | {
+      type: "append_assistant_entry";
+      threadId: string;
+      entryId: string;
+      response: string;
+      tools: ToolCallView[];
+      thinking?: string;  // 可选的 thinking 内容
       createdAt: number;
     }
   | {
@@ -122,7 +152,12 @@ export type ChatAction =
       threadId: string;
       assistantEntryId: string;
       message: string;
-    };
+    }
+  // 会话管理 actions
+  | { type: "sessions_loaded"; sessions: SessionSummary[] }
+  | { type: "sessions_failed"; message: string }
+  | { type: "switch_left_panel"; tab: "skills" | "sessions" }
+  | { type: "load_session"; threadId: string };
 
 const DEFAULT_THREAD_ID = "thread-1";
 
@@ -140,6 +175,10 @@ export function createInitialState(): ChatState {
     threadOrder: [DEFAULT_THREAD_ID],
     activeThreadId: DEFAULT_THREAD_ID,
     isStreaming: false,
+    // 会话管理
+    sessions: [],
+    sessionsLoaded: false,
+    leftPanelTab: "skills",
   };
 }
 
@@ -235,11 +274,18 @@ function applyToolResult(
   const success = inferToolSuccess(event.content, event.success);
   const nextStatus: ToolStatus = success ? "success" : "failed";
 
-  let index = tools.findIndex(
-    (tool) => tool.status === "running" && tool.name === event.name,
-  );
+  // 优先使用 tool_use_id 精确匹配（支持并行同名工具调用）
+  let index = tools.findIndex((tool) => tool.id === event.tool_use_id);
 
-  if (index < 0) {
+  if (index < 0 && !event.tool_use_id) {
+    // Fallback：如果没有 tool_use_id，才用 name + status 匹配
+    index = tools.findIndex(
+      (tool) => tool.status === "running" && tool.name === event.name,
+    );
+  }
+
+  if (index < 0 && !event.tool_use_id) {
+    // 最后的兜底：匹配任意运行中的工具
     index = tools.findIndex((tool) => tool.status === "running");
   }
 
@@ -426,6 +472,51 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return replaceThread(state, action.threadId, updatedThread);
     }
 
+    case "append_user_entry": {
+      const thread = getThread(state, action.threadId);
+      if (!thread) {
+        return state;
+      }
+
+      const updatedThread: ThreadState = {
+        ...thread,
+        timeline: [
+          ...thread.timeline,
+          {
+            kind: "user",
+            id: action.entryId,
+            text: action.text,
+            createdAt: action.createdAt,
+          },
+        ],
+      };
+      return replaceThread(state, action.threadId, updatedThread);
+    }
+
+    case "append_assistant_entry": {
+      const thread = getThread(state, action.threadId);
+      if (!thread) {
+        return state;
+      }
+
+      const updatedThread: ThreadState = {
+        ...thread,
+        timeline: [
+          ...thread.timeline,
+          {
+            kind: "assistant",
+            id: action.entryId,
+            createdAt: action.createdAt,
+            phase: "done",
+            thinking: action.thinking || "",  // 使用传入的 thinking 或空字符串
+            response: action.response,
+            tools: action.tools,
+          },
+        ],
+      };
+      return replaceThread(state, action.threadId, updatedThread);
+    }
+
     case "stream_event": {
       const thread = getThread(state, action.threadId);
       if (!thread) {
@@ -547,6 +638,34 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
         streamError: action.message,
       };
     }
+
+    case "sessions_loaded":
+      return {
+        ...state,
+        sessions: action.sessions,
+        sessionsLoaded: true,
+        sessionsError: undefined,
+      };
+
+    case "sessions_failed":
+      return {
+        ...state,
+        sessionsLoaded: true,
+        sessionsError: action.message,
+      };
+
+    case "switch_left_panel":
+      return {
+        ...state,
+        leftPanelTab: action.tab,
+      };
+
+    case "load_session":
+      return {
+        ...state,
+        activeThreadId: action.threadId,
+        leftPanelTab: "sessions",
+      };
 
     default:
       return state;

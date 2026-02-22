@@ -3,17 +3,19 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import { ChatTimeline } from "./components/ChatTimeline";
 import { Composer } from "./components/Composer";
 import { SkillPanel } from "./components/SkillPanel";
+import { SessionPanel } from "./components/SessionPanel";
 import { openChatStream } from "./lib/sse";
 import {
   chatReducer,
   createInitialState,
   type SkillSummary,
+  type SessionSummary,
 } from "./state/chatReducer";
 import type { AgentStreamEvent } from "./types/events";
 import "./App.css";
 
 const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL?.trim() || "http://localhost:8000";
+  import.meta.env.VITE_API_BASE_URL?.trim() || "http://localhost:8001";
 
 function makeId(prefix: string): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -47,6 +49,7 @@ export default function App() {
 
   const activeThread = state.threads[state.activeThreadId];
 
+  // 加载 Skills 列表
   useEffect(() => {
     let cancelled = false;
 
@@ -69,6 +72,35 @@ export default function App() {
     };
 
     loadSkills();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // 加载会话列表
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadSessions = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions`);
+        if (!response.ok) {
+          throw new Error(`Failed to load sessions (${response.status})`);
+        }
+        const payload = (await response.json()) as { sessions: SessionSummary[] };
+        if (!cancelled) {
+          dispatch({ type: "sessions_loaded", sessions: payload.sessions || [] });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (!cancelled) {
+          dispatch({ type: "sessions_failed", message });
+        }
+      }
+    };
+
+    loadSessions();
 
     return () => {
       cancelled = true;
@@ -197,6 +229,98 @@ export default function App() {
     });
   };
 
+  const handleLoadSession = useCallback(
+    async (threadId: string) => {
+      // 如果会话不存在，先创建
+      if (!state.threads[threadId]) {
+        dispatch({
+          type: "create_thread",
+          threadId,
+          label: `Conversation ${threadId}`,
+        });
+      }
+
+      // 从服务器加载会话历史
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/sessions/${threadId}/messages`);
+        if (!response.ok) {
+          throw new Error(`Failed to load session messages (${response.status})`);
+        }
+        const payload = await response.json();
+        const messages = payload.messages || [];
+
+        // 将加载的消息添加到 timeline
+        for (const msg of messages) {
+          const entryId = `db-${msg.id}`;
+          const createdAt = new Date(msg.created_at).getTime();
+
+          if (msg.role === "human") {
+            // 创建 UserEntry
+            dispatch({
+              type: "append_user_entry",
+              threadId,
+              entryId,
+              text: msg.content || "",
+              createdAt,
+            });
+          } else if (msg.role === "ai") {
+            // 解析 tool_calls 和 tool_results
+            let tools: ToolCallView[] = [];
+
+            if (msg.tool_calls) {
+              try {
+                const toolCalls = JSON.parse(msg.tool_calls);
+                const toolResults = msg.tool_results ? JSON.parse(msg.tool_results) : {};
+
+                // 合并 tool_calls 和 tool_results
+                tools = toolCalls.map((tc: any) => {
+                  const result = toolResults[tc.id];
+                  return {
+                    id: tc.id,
+                    name: tc.name,
+                    args: tc.args || {},
+                    status: result ? (result.success ? "success" : "failed") : "running",
+                    result: result?.result,
+                    success: result?.success,
+                    expanded: false,
+                  };
+                });
+              } catch (e) {
+                console.error("Failed to parse tool_calls:", e);
+              }
+            }
+
+            // 创建 AssistantEntry
+            dispatch({
+              type: "append_assistant_entry",
+              threadId,
+              entryId,
+              response: msg.content || "",
+              tools,
+              thinking: msg.reasoning_content || "",  // 新增：传递 thinking 内容
+              createdAt,
+            });
+          }
+        }
+
+        // 切换到该会话
+        dispatch({
+          type: "switch_thread",
+          threadId,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error("Failed to load session:", message);
+        // 即使加载失败也切换会话
+        dispatch({
+          type: "switch_thread",
+          threadId,
+        });
+      }
+    },
+    [state.threads],
+  );
+
   return (
     <div className="app-shell">
       <header className="top-bar">
@@ -231,12 +355,44 @@ export default function App() {
       </header>
 
       <div className="workspace">
-        <SkillPanel
-          skills={state.skills}
-          activeSkillName={activeThread?.activeSkillName}
-          loading={!state.skillsLoaded && !state.skillsError}
-          error={state.skillsError}
-        />
+        <div className="left-panel">
+          <div className="tab-tabs">
+            <button
+              className={state.leftPanelTab === "skills" ? "tab-tabs__button tab-tabs__button--active" : "tab-tabs__button"}
+              onClick={() => dispatch({ type: "switch_left_panel", tab: "skills" })}
+              type="button"
+            >
+              Skills
+            </button>
+            <button
+              className={state.leftPanelTab === "sessions" ? "tab-tabs__button tab-tabs__button--active" : "tab-tabs__button"}
+              onClick={() => dispatch({ type: "switch_left_panel", tab: "sessions" })}
+              type="button"
+            >
+              Conversations
+            </button>
+          </div>
+
+          {state.leftPanelTab === "skills" && (
+            <SkillPanel
+              skills={state.skills}
+              activeSkillName={activeThread?.activeSkillName}
+              loading={!state.skillsLoaded && !state.skillsError}
+              error={state.skillsError}
+            />
+          )}
+
+          {state.leftPanelTab === "sessions" && (
+            <SessionPanel
+              sessions={state.sessions}
+              activeThreadId={state.activeThreadId}
+              loading={!state.sessionsLoaded && !state.sessionsError}
+              error={state.sessionsError}
+              onLoadSession={handleLoadSession}
+              onNewSession={createThread}
+            />
+          )}
+        </div>
 
         <main className="chat-panel">
           <ChatTimeline

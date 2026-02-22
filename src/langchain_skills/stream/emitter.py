@@ -34,13 +34,14 @@ class StreamEventEmitter:
         return StreamEvent("tool_call", {"type": "tool_call", "name": name, "args": args, "id": tool_id})
 
     @staticmethod
-    def tool_result(name: str, content: str, success: bool = True) -> StreamEvent:
+    def tool_result(name: str, content: str, success: bool = True, tool_id: str = "") -> StreamEvent:
         """工具结果事件"""
         return StreamEvent("tool_result", {
             "type": "tool_result",
             "name": name,
             "content": content,
             "success": success,
+            "tool_use_id": tool_id,
         })
 
     @staticmethod

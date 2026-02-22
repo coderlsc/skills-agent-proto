@@ -109,9 +109,9 @@ uv run langchain-skills --show-prompt
 脚本会自动执行：
 - `uv sync`（后端依赖安装）
 - `web/npm install`（前端依赖安装）
-- 启动 FastAPI（8000）和 Vite（5173）
+- 启动 FastAPI（8001）和 Vite（5173）
 
-### 1. 启动后端 API（端口 8000）
+### 1. 启动后端 API（端口 8001）
 
 ```bash
 uv run langchain-skills-web
@@ -120,7 +120,7 @@ uv run langchain-skills-web
 等价命令：
 
 ```bash
-uv run uvicorn langchain_skills.web_api:app --reload --port 8000
+uv run uvicorn langchain_skills.web_api:app --reload --port 8001
 ```
 
 ### 2. 启动前端（端口 5173）
@@ -131,10 +131,10 @@ npm install
 npm run dev
 ```
 
-默认会连接 `http://localhost:8000`，如需修改：
+默认会连接 `http://localhost:8001`，如需修改：
 
 ```bash
-VITE_API_BASE_URL=http://127.0.0.1:8000 npm run dev
+VITE_API_BASE_URL=http://127.0.0.1:8001 npm run dev
 ```
 
 ### 3. Web 交互能力
