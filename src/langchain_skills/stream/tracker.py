@@ -94,15 +94,17 @@ class ToolCallTracker:
         if tool_id and tool_id in self._calls:
             self._calls[tool_id]._json_buffer += partial_json
 
-    def finalize_all(self) -> None:
+    def finalize_tool_call_info(self,tool_id: str) -> None:
         """最终化所有工具调用：解析累积的 JSON 片段并标记参数完整"""
-        for info in self._calls.values():
-            if info._json_buffer:
-                try:
-                    info.args = json.loads(info._json_buffer)
-                except json.JSONDecodeError:
+        if tool_id not in self._calls:
+            return
+        info = self._calls[tool_id]
+        if info._json_buffer:
+            try:
+                info.args = json.loads(info._json_buffer)
+            except json.JSONDecodeError:
                     pass  # 保持原有 args
-                info._json_buffer = ""
+            info._json_buffer = ""      
             # finalize 时标记所有工具参数完整
             info.args_complete = True
 

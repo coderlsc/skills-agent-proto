@@ -519,6 +519,7 @@ When a user request matches a skill's description, use the load_skill tool to ge
                     # 立即发送（显示"执行中"状态），参数可能尚不完整
                     if tracker.is_ready(tool_id):
                         tracker.mark_emitted(tool_id)
+                        print(f"[TOOL_CALL_EMIT] _process_chunk_content: tool_use/tool_call block | tool_id={tool_id} | name={name}")
                         yield emitter.tool_call(name, args_payload, tool_id)
 
             elif block_type == "input_json_delta":
@@ -530,9 +531,9 @@ When a user request matches a skill's description, use the load_skill tool to ge
             elif block_type == "tool_call_chunk":
                 tool_id = block.get("id", "")
                 name = block.get("name", "")
+                partial_args = block.get("args", "")
                 if tool_id:
                     tracker.update(tool_id, name=name)
-                partial_args = block.get("args", "")
                 if isinstance(partial_args, str) and partial_args:
                     tracker.append_json_delta(partial_args, block.get("index", 0))
 
@@ -551,6 +552,7 @@ When a user request matches a skill's description, use the load_skill tool to ge
             tracker.update(tool_id, name=name, args=args_payload)
             if tracker.is_ready(tool_id):
                 tracker.mark_emitted(tool_id)
+                print(f"[TOOL_CALL_EMIT] _handle_tool_use_block | tool_id={tool_id} | name={name}")
                 yield emitter.tool_call(name, args_payload, tool_id)
 
     def _process_tool_calls(self, tool_calls: list, emitter: StreamEventEmitter, tracker: ToolCallTracker):
@@ -568,21 +570,23 @@ When a user request matches a skill's description, use the load_skill tool to ge
                 tracker.update(tool_id, name=name, args=args_payload)
                 if tracker.is_ready(tool_id):
                     tracker.mark_emitted(tool_id)
+                    print(f"[TOOL_CALL_EMIT] _process_tool_calls | tool_id={tool_id} | name={name}")
                     yield emitter.tool_call(name, args_payload, tool_id)
 
     def _process_tool_result(self, chunk, emitter: StreamEventEmitter, tracker: ToolCallTracker):
         """处理工具结果"""
+        tool_call_id = getattr(chunk, "tool_call_id", "")
+        tool_call_info = tracker.get(tool_call_id)
         # 最终化：解析累积的 JSON 片段为 args
-        tracker.finalize_all()
+        tracker.finalize_tool_call_info(tool_call_id)
 
         # 发送所有工具调用的更新（参数现在是完整的）
         # CLI 会用 tool_id 去重和更新
-        for info in tracker.get_all():
-            yield emitter.tool_call(info.name, info.args, info.id)
+        print(f"[TOOL_CALL_EMIT] _process_tool_result | tool_id={tool_call_info.id} | name={tool_call_info.name}")
+        yield emitter.tool_call(tool_call_info.name, tool_call_info.args, tool_call_info.id)
 
         # 发送结果
         name = getattr(chunk, "name", "unknown")
-        tool_call_id = getattr(chunk, "tool_call_id", "")
         raw_content = str(getattr(chunk, "content", ""))
         content = raw_content[:DisplayLimits.TOOL_RESULT_MAX]
         if len(raw_content) > DisplayLimits.TOOL_RESULT_MAX:
